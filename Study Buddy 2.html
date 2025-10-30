@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Study Buddy  — Techtitans PDF</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+
+<style>
+:root {
+  --accent: #6366f1;
+  --bg: #f1f5f9;
+  --card: rgba(255, 255, 255, 0.9);
+  --text: #1e293b;
+  --muted: #64748b;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --radius: 16px;
+}
+body.dark {
+  --bg: #0f172a;
+  --card: rgba(30, 41, 59, 0.85);
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #818cf8;
+}
+
+html,body{height:100%;}
+body {
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  height: 100vh;
+  background: radial-gradient(circle at 10% 10%, #c7d2fe 0%, #f1f5f9 100%);
+  color: var(--text);
+  overflow: hidden;
+  transition: background 0.6s, color 0.6s;
+}
+body.dark { background: radial-gradient(circle at 80% 10%, #1e1b4b 0%, #0f172a 100%); }
+
+.app {
+  display: grid;
+  grid-template-columns: 320px 1fr 320px;
+  gap: 14px;
+  height: calc(100vh - 28px);
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+.panel {
+  background: var(--card);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  transition: transform 0.35s ease;
+}
+.panel:hover { transform: translateY(-4px); }
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+button:hover{ transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99,102,241,0.22); }
+button.ghost{ background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+
+input,textarea{ width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:8px; font-family:inherit; font-size:14px; box-sizing:border-box; background: rgba(255,255,255,0.85); color:var(--text); }
+body.dark input, body.dark textarea{ background: rgba(15,23,42,0.6); border-color:#475569; color:var(--text); }
+
+header h1{ font-size:20px; margin:0; color:var(--accent); }
+.muted{ color:var(--muted); font-size:13px; }
+
+/* PDF container optimized */
+.pdf-frame{ display:flex; flex-direction:column; }
+#canvasContainer{ flex:1; overflow:auto; background: rgba(255,255,255,0.6); border-radius:12px; padding:10px; text-align:center; scroll-behavior:smooth; }
+.pageWrap{ height:auto; width:100%; display:flex; justify-content:center; margin-bottom:18px; }
+.pageCanvas{ border-radius:10px; box-shadow: var(--shadow); max-width:100%; transition: transform 0.2s ease; }
+.pageCanvas.loading{ filter: blur(3px) grayscale(0.2); opacity:0.85; }
+
+.toolbar{ position:sticky; top:0; background:transparent; display:flex; gap:8px; align-items:center; z-index:10; }
+
+.flashcard{ background: linear-gradient(135deg,#ffffffee,#e0e7ffee); border-radius:12px; padding:12px; margin-bottom:12px; cursor:pointer; perspective:1000px; position:relative; }
+.flash-inner{ position:relative; transform-style:preserve-3d; transition:transform .6s; }
+.flashcard.flipped .flash-inner{ transform:rotateY(180deg); }
+.flash-front,.flash-back{ position:absolute; backface-visibility:hidden; width:100%; height:100%; }
+.flash-back{ transform:rotateY(180deg); color:var(--accent); font-weight:600; }
+.flash-del{ position:absolute; top:6px; right:6px; font-size:12px; background:#ef4444; color:white; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+
+#dropZone{ border:2px dashed transparent; transition: border-color .18s ease, background .18s ease; }
+#dropZone.dragover{ border-color: rgba(99,102,241,0.45); background: rgba(99,102,241,0.02); }
+
+#saveStatus{ font-size:12px; color:var(--muted); text-align:right; margin-top:6px; }
+
+/* responsive tweaks */
+@media (max-width:1000px){ .app{ grid-template-columns: 1fr; grid-auto-rows: min-content; height:auto; padding-bottom:60px; } .panel{ height:auto; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- LEFT -->
+  <div class="panel">
+    <header>
+      <h1>Study Buddy </h1>
+      <div class="muted">Loaded by: <strong id="fileName">TechTitan</strong></div>
+    </header>
+
+    <div class="toolbar" style="margin-top:8px;">
+      <button id="prev">⟵ Prev</button>
+      <button id="next">Next ⟶</button>
+      <button id="zoomIn">Zoom +</button>
+      <button id="zoomOut">Zoom -</button>
+      <button id="fitWidth" class="ghost">Fit width</button>
+    </div>
+
+    <label style="margin-top:10px;">Search PDF</label>
+    <div style="display:flex;gap:6px; margin-bottom:8px;">
+      <input id="searchText" type="text" placeholder="Search text..." />
+      <button id="searchBtn" class="ghost">Find</button>
+    </div>
+
+    <hr style="margin:12px 0;border-color:#e2e8f0" />
+
+    <label>Create Flashcard</label>
+    <input id="fcQuestion" type="text" placeholder="Question" />
+    <textarea id="fcAnswer" rows="2" placeholder="Answer"></textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button id="addFlash">Add</button>
+      <button id="addFromSel" class="ghost">From Selection</button>
+      <button id="shuffleFlash" class="ghost">Shuffle</button>
+    </div>
+
+    <label style="margin-top:10px;">Flashcards</label>
+    <div id="flashList" class="list" style="margin-top:8px;"></div>
+  </div>
+
+  <!-- MIDDLE -->
+  <div class="panel pdf-frame" id="dropZone">
+    <div class="muted" style="margin-bottom:8px;">PDF Viewer — drag & drop a PDF here to load</div>
+    <div id="canvasContainer"><div id="loading" class="muted">Loading PDF...</div></div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="panel">
+    <label>Notes</label>
+    <textarea id="notes" rows="8" placeholder="Write study notes..."></textarea>
+    <div id="saveStatus">Auto-saved</div>
+
+    <hr style="margin:12px 0;border-color:#e2e8f0" />
+    <label>Study Timer</label>
+    <div id="timerDisplay" class="muted">00:00</div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="startTimer">Start</button>
+      <button id="pauseTimer" class="ghost">Pause</button>
+      <button id="resetTimer" class="ghost">Reset</button>
+    </div>
+
+    <div style="margin-top:10px;">
+      <label>Quiz</label>
+      <button id="quizBtn">Start Quiz</button>
+      <div id="quizArea" class="muted" style="margin-top:8px;">No quiz running.</div>
+    </div>
+
+    <hr style="margin:12px 0;border-color:#e2e8f0" />
+    <label>Quick Summary (mock AI)</label>
+    <div id="summary" class="muted">Select a page and click "Summarize Page" — this is a placeholder for integration with a real summarization API.</div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="summarizePage" class="ghost">Summarize Page</button>
+      <button id="openInNew" class="ghost">Open PDF file</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.min.js"></script>
+<script>
+// Configuration & helpers
+const PDF_PATH = './Techtitans_B1140JR1_DT-13092025.pdf';
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.worker.min.js';
+
+let pdfDoc = null;
+let scale = 1.2;
+const container = document.getElementById('canvasContainer');
+const loading = document.getElementById('loading');
+let pageCanvases = {};
+let renderQueue = {};
+let visiblePages = new Set();
+
+// Virtualized rendering: only render pages when they enter the viewport
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    const idx = parseInt(e.target.datasetpage);
+    if(e.isIntersecting){
+      visiblePages.add(idx);
+      requestRenderPage(idx);
+    } else {
+      visiblePages.delete(idx);
+      // Optionally free memory for far-away pages
+      // keep a small cache of canvases
+    }
+  });
+}, { root: container, rootMargin: '1000px', threshold: 0.01 });
+
+async function loadPDF(path){
+  try{
+    loading.style.display='block';
+    const loadingTask = pdfjsLib.getDocument(path);
+    pdfDoc = await loadingTask.promise;
+    loading.style.display='none';
+    renderStructure();
+  } catch(e){
+    loading.innerHTML = '<span style="color:red;">Could not load PDF.</span>';
+    console.error(e);
+  }
+}
+
+// Create placeholders for pages — this makes initial load snappy
+function renderStructure(){
+  container.innerHTML='';
+  pageCanvases = {};
+  for(let p=1;p<=pdfDoc.numPages;p++){
+    const wrap = document.createElement('div');
+    wrap.className='pageWrap';
+    wrap.style.minHeight = '200px';
+    wrap.datasetpage = p;
+    wrap.innerHTML = `<canvas class="pageCanvas loading" data-page="${p}"></canvas>`;
+    container.appendChild(wrap);
+    observer.observe(wrap);
+  }
+}
+
+// Request render with simple queue to avoid multiple concurrent renders
+function requestRenderPage(pageNum){
+  if(renderQueue[pageNum]) return; // already queued or rendering
+  renderQueue[pageNum]=true;
+  // small timeout to batch multiple triggers
+  setTimeout(async ()=>{
+    try{
+      const wrap = [...container.querySelectorAll('.pageWrap')].find(w=>parseInt(w.datasetpage)===pageNum);
+      if(!wrap) return;
+      const canvas = wrap.querySelector('canvas');
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+      canvas.width = Math.min(viewport.width, Math.floor(container.clientWidth*0.95));
+      canvas.height = viewport.height * (canvas.width/viewport.width);
+      canvas.classList.remove('loading');
+      const ctx = canvas.getContext('2d');
+      // clear before render
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // render
+      const renderTask = page.render({ canvasContext: ctx, viewport: page.getViewport({ scale: canvas.width/viewport.width * scale }) });
+      await renderTask.promise;
+    }catch(err){ console.error('render error',err); }
+    delete renderQueue[pageNum];
+  }, 60);
+}
+
+// Controls
+document.getElementById('zoomIn').onclick = ()=>{ scale *= 1.15; relayoutPages(); };
+document.getElementById('zoomOut').onclick = ()=>{ scale /= 1.15; relayoutPages(); };
+document.getElementById('fitWidth').onclick = ()=>{ // compute scale to fit width of container
+  const samplePage = container.querySelector('.pageWrap');
+  if(!samplePage) return; const canvas = samplePage.querySelector('canvas'); if(!canvas) return;
+  // temporarily set scale so that canvas width ~= container width * 0.95
+  const targetWidth = Math.floor(container.clientWidth*0.95);
+  scale = (targetWidth / (canvas.width||100)) * (scale||1);
+  relayoutPages();
+};
+
+document.getElementById('next').onclick = ()=> container.scrollBy({ top: window.innerHeight*0.8, behavior: 'smooth' });
+document.getElementById('prev').onclick = ()=> container.scrollBy({ top: -window.innerHeight*0.8, behavior: 'smooth' });
+
+function relayoutPages(){
+  // mark all canvases as loading and re-request render for visible range
+  document.querySelectorAll('.pageCanvas').forEach(c=>{ c.classList.add('loading'); });
+  visiblePages.forEach(p=> requestRenderPage(p) );
+}
+
+/* Flashcards */
+function loadData(key,def){ return JSON.parse(localStorage.getItem('sb4_'+key)) || def; }
+function saveData(key,val){ localStorage.setItem('sb4_'+key, JSON.stringify(val)); }
+function renderFlashcards(){
+  const list = document.getElementById('flashList');
+  const cards = loadData('flashcards', []);
+  list.innerHTML='';
+  if(!cards.length){ list.innerHTML='<div class="muted">No flashcards yet.</div>'; return; }
+  cards.forEach((c,i)=>{
+    const card = document.createElement('div'); card.className='flashcard';
+    card.innerHTML = `<div class="flash-inner"><div class="flash-front">${c.q}</div><div class="flash-back">${c.a}</div></div><div class="flash-del" title="Delete">×</div>`;
+    card.querySelector('.flash-del').onclick = (e)=>{ e.stopPropagation(); cards.splice(i,1); saveData('flashcards',cards); renderFlashcards(); };
+    card.onclick = ()=> card.classList.toggle('flipped');
+    list.appendChild(card);
+  });
+}
+document.getElementById('addFlash').onclick = ()=>{
+  const q = document.getElementById('fcQuestion').value.trim();
+  const a = document.getElementById('fcAnswer').value.trim();
+  if(!q || !a) return alert('Enter both question and answer');
+  const cards = loadData('flashcards', []);
+  cards.push({q,a}); saveData('flashcards',cards); document.getElementById('fcQuestion').value=''; document.getElementById('fcAnswer').value=''; renderFlashcards();
+};
+
+document.getElementById('shuffleFlash').onclick = ()=>{
+  const cards = loadData('flashcards', []);
+  for(let i=cards.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [cards[i],cards[j]]=[cards[j],cards[i]]; }
+  saveData('flashcards',cards); renderFlashcards();
+};
+
+/* Notes autosave */
+const notes = document.getElementById('notes'); const saveStatus = document.getElementById('saveStatus');
+notes.value = loadData('notes','');
+let autoSaveTimer = null;
+notes.addEventListener('input', ()=>{
+  saveStatus.textContent = 'Saving...';
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(()=>{ saveData('notes', notes.value); saveStatus.textContent = 'Saved ✓'; setTimeout(()=>saveStatus.textContent='Auto-saved',900); }, 650);
+});
+
+/* Timer */
+let timer = 0, timerInterval = null;
+function fmt(t){ const m = String(Math.floor(t/60)).padStart(2,'0'); const s = String(t%60).padStart(2,'0'); return `${m}:${s}`; }
+function updateTimer(){ timer++; document.getElementById('timerDisplay').textContent = fmt(timer); }
+document.getElementById('startTimer').onclick = ()=>{ if(timerInterval) return; timerInterval = setInterval(updateTimer,1000); };
+document.getElementById('pauseTimer').onclick = ()=>{ clearInterval(timerInterval); timerInterval=null; };
+document.getElementById('resetTimer').onclick = ()=>{ clearInterval(timerInterval); timerInterval=null; timer=0; document.getElementById('timerDisplay').textContent='00:00'; };
+
+/* Quiz (small improvement) */
+document.getElementById('quizBtn').onclick = ()=>{
+  const cards = loadData('flashcards', []);
+  if(!cards.length) return alert('No flashcards available.');
+  let correct = 0;
+  for(const c of cards){
+    const ans = prompt('Q: '+c.q);
+    if(ans?.trim().toLowerCase()===c.a.trim().toLowerCase()) correct++;
+  }
+  document.getElementById('quizArea').textContent = `Quiz done — Score: ${correct}/${cards.length}`;
+};
+
+/* Search (keeps responsive by checking pages sequentially) */
+document.getElementById('searchBtn').onclick = async ()=>{
+  const term = document.getElementById('searchText').value.trim().toLowerCase();
+  if(!term) return;
+  const found = [];
+  for(let p=1;p<=pdfDoc.numPages;p++){
+    const page = await pdfDoc.getPage(p);
+    const txt = await page.getTextContent();
+    const content = txt.items.map(i=>i.str).join(' ').toLowerCase();
+    if(content.includes(term)) found.push(p);
+  }
+  alert(found.length? 'Found on pages: '+found.join(', '):'No matches.');
+};
+
+/* Summarize page - mock */
+document.getElementById('summarizePage').onclick = async ()=>{
+  // Find nearest visible page
+  const firstVisible = [...container.querySelectorAll('.pageWrap')].find(w=>{
+    const r = w.getBoundingClientRect(); return r.top < window.innerHeight && r.bottom > 0;
+  });
+  if(!firstVisible){ alert('Scroll to the page you want summarized.'); return; }
+  const p = parseInt(firstVisible.datasetpage);
+  // naive text extraction — in real use we'd call an API
+  const page = await pdfDoc.getPage(p);
+  const txt = await page.getTextContent();
+  const content = txt.items.map(i=>i.str).join(' ');
+  // very simple summary: first 300 chars
+  const summary = content.slice(0,300) + (content.length>300? '…':'');
+  document.getElementById('summary').textContent = `Page ${p} summary: ${summary}`;
+};
+
+/* Drag & drop for loading local PDF files */
+const dropZone = document.getElementById('dropZone');
+['dragenter','dragover'].forEach(e=> dropZone.addEventListener(e, ev=>{ ev.preventDefault(); ev.stopPropagation(); dropZone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e=> dropZone.addEventListener(e, ev=>{ ev.preventDefault(); ev.stopPropagation(); dropZone.classList.remove('dragover'); }));
+
+dropZone.addEventListener('drop', ev=>{
+  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if(!f) return;
+  if(!f.type.includes('pdf')) return alert('Please drop a PDF file');
+  const url = URL.createObjectURL(f);
+  document.getElementById('fileName').textContent = f.name;
+  loadPDF(url);
+});
+
+/* Open initial PDF (default path) */
+loadPDF(PDF_PATH).catch(e=>console.error(e));
+
+/* Render-only visible pages when scrolled: throttle with rAF */
+let ticking = false;
+container.addEventListener('scroll', ()=>{ if(!ticking){ requestAnimationFrame(()=>{ // trigger intersection observer naturally
+    ticking = false; }); ticking = true; }});
+
+/* initial UI state */
+renderFlashcards();
+
+</script>
+</body>
+</html>
